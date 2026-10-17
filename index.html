@@ -72,23 +72,79 @@
       letter-spacing: .14em;
       text-transform: uppercase;
     }
-    .sound-control {
-      margin-top: 44px;
-      min-height: 40px;
-      padding: 10px 16px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--panel);
-      color: #c6c9d3;
-      font: inherit;
-      font-size: .8rem;
-      letter-spacing: .04em;
-      cursor: pointer;
-      transition: background .2s ease, border-color .2s ease, color .2s ease;
+    .music-control {
+      position: fixed;
+      top: 22px;
+      right: 24px;
+      z-index: 5;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #a8acba;
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      user-select: none;
     }
-    .sound-control:hover { background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.25); color: white; }
-    .sound-control:focus-visible { outline: 2px solid #aab4ff; outline-offset: 4px; }
-    .sound-control[hidden] { display: none; }
+    .music-switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+      flex: 0 0 auto;
+    }
+    .music-switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 999px;
+      background: rgba(255,255,255,.09);
+      cursor: pointer;
+      transition: background .2s ease, border-color .2s ease;
+    }
+    .switch-track::after {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #8c91a0;
+      content: "";
+      transition: transform .2s ease, background .2s ease;
+    }
+    .music-switch input:checked + .switch-track {
+      border-color: rgba(181,190,255,.55);
+      background: rgba(126,139,230,.34);
+    }
+    .music-switch input:checked + .switch-track::after {
+      transform: translateX(16px);
+      background: #e4e7ff;
+    }
+    .music-switch input:focus-visible + .switch-track {
+      outline: 2px solid #aab4ff;
+      outline-offset: 4px;
+    }
+    .music-switch input:disabled + .switch-track {
+      cursor: not-allowed;
+      opacity: .35;
+    }
+    .music-hint {
+      position: fixed;
+      top: 50px;
+      right: 24px;
+      color: #686d7c;
+      font-size: .68rem;
+      letter-spacing: .02em;
+    }
+    .music-hint[hidden] { display: none; }
     .footer {
       position: fixed;
       bottom: 18px;
@@ -101,9 +157,11 @@
     }
     @keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     @media (max-width: 420px) {
+      body { padding: 20px; }
       .eyebrow { margin-bottom: 24px; letter-spacing: .2em; }
       .caption { margin-top: 38px; }
-      .sound-control { margin-top: 34px; }
+      .music-control { top: 18px; right: 18px; }
+      .music-hint { top: 44px; right: 18px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -111,13 +169,21 @@
   </style>
 </head>
 <body>
+  <div class="music-control">
+    <span id="musicLabel">Music</span>
+    <label class="music-switch" title="Bật hoặc tắt nhạc nền">
+      <input id="musicToggle" type="checkbox" role="switch" aria-label="Music" checked>
+      <span class="switch-track" aria-hidden="true"></span>
+    </label>
+  </div>
+  <p class="music-hint" id="musicHint" aria-live="polite" hidden>Chạm để bật nhạc</p>
+
   <main class="page">
     <p class="eyebrow">LOCAL TIME · VIETNAM</p>
     <h1 class="clock" id="clock" aria-label="Giờ hiện tại tại Việt Nam">--:--:--</h1>
     <p class="date" id="date">Loading date…</p>
     <p class="caption">Literally my time right now.</p>
     <p class="timezone">Asia / Ho Chi Minh · UTC+7</p>
-    <button class="sound-control" id="soundButton" type="button" hidden>♪ Bật nhạc nền</button>
     <audio id="backgroundMusic" src="music.mp3" loop preload="auto"></audio>
   </main>
   <div class="footer">JUST HERE, JUST NOW.</div>
@@ -128,7 +194,8 @@
       const clock = document.getElementById('clock');
       const date = document.getElementById('date');
       const music = document.getElementById('backgroundMusic');
-      const soundButton = document.getElementById('soundButton');
+      const musicToggle = document.getElementById('musicToggle');
+      const musicHint = document.getElementById('musicHint');
       let musicAvailable = true;
 
       const timeFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -149,38 +216,43 @@
       updateClock();
       setInterval(updateClock, 250);
 
-      // If music.mp3 is missing, keep the clock working silently.
+      // The toggle starts on and autoplay is attempted immediately.
+      // Browsers may block audible autoplay until the user interacts with the page.
       music.addEventListener('error', () => {
         musicAvailable = false;
-        soundButton.hidden = true;
+        music.pause();
+        musicToggle.checked = false;
+        musicToggle.disabled = true;
+        musicHint.hidden = true;
       });
 
-      // Autoplay may be blocked by the browser; offer a manual button instead.
-      const autoplay = music.play();
-      if (autoplay && typeof autoplay.then === 'function') {
-        autoplay.then(() => {
-          soundButton.hidden = true;
-        }).catch(() => {
-          soundButton.hidden = false;
-          soundButton.textContent = '♪ Bật nhạc nền';
-        });
-      }
-
-      soundButton.addEventListener('click', async () => {
+      async function turnMusicOn() {
         if (!musicAvailable) return;
         try {
-          if (music.paused) {
-            await music.play();
-            soundButton.textContent = '♫ Nhạc nền đang bật';
-          } else {
-            music.pause();
-            soundButton.textContent = '♪ Bật nhạc nền';
-          }
+          await music.play();
+          musicHint.hidden = true;
+          musicToggle.checked = true;
         } catch (_) {
-          // A missing/unsupported file should never break the clock.
-          soundButton.hidden = true;
+          musicToggle.checked = false;
+          musicHint.textContent = 'Chạm để bật nhạc';
+          musicHint.hidden = false;
+        }
+      }
+
+      musicToggle.addEventListener('change', async () => {
+        musicHint.hidden = true;
+        if (!musicAvailable) {
+          musicToggle.checked = false;
+          return;
+        }
+        if (musicToggle.checked) {
+          await turnMusicOn();
+        } else {
+          music.pause();
         }
       });
+
+      turnMusicOn();
     })();
   </script>
 </body>
