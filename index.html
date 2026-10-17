@@ -198,10 +198,6 @@
       const musicHint = document.getElementById('musicHint');
       let musicAvailable = true;
 
-      // The toggle represents the user's desired setting, not whether autoplay
-      // was permitted. Keep it ON by default even when the browser blocks autoplay.
-      musicToggle.checked = true;
-
       const timeFormatter = new Intl.DateTimeFormat('en-GB', {
         timeZone: timezone,
         hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -220,50 +216,42 @@
       updateClock();
       setInterval(updateClock, 250);
 
+      // The toggle starts on and autoplay is attempted immediately.
+      // Browsers may block audible autoplay until the user interacts with the page.
       music.addEventListener('error', () => {
-        // Missing music.mp3 must not break the clock or force the toggle OFF.
         musicAvailable = false;
         music.pause();
-        musicHint.textContent = 'Không tìm thấy music.mp3';
-        musicHint.hidden = false;
+        musicToggle.checked = false;
+        musicToggle.disabled = true;
+        musicHint.hidden = true;
       });
 
       async function turnMusicOn() {
-        if (!musicAvailable) {
-          musicHint.textContent = 'Không tìm thấy music.mp3';
-          musicHint.hidden = false;
-          return;
-        }
+        if (!musicAvailable) return;
         try {
           await music.play();
           musicHint.hidden = true;
+          musicToggle.checked = true;
         } catch (_) {
-          // Autoplay may be blocked by the browser. Keep the switch ON and retry
-          // after a real user interaction instead of making it look OFF.
-          musicHint.textContent = 'Chạm vào màn hình để phát nhạc';
+          musicToggle.checked = false;
+          musicHint.textContent = 'Chạm để bật nhạc';
           musicHint.hidden = false;
         }
       }
 
       musicToggle.addEventListener('change', async () => {
-        if (!musicToggle.checked) {
-          music.pause();
-          musicHint.hidden = true;
+        musicHint.hidden = true;
+        if (!musicAvailable) {
+          musicToggle.checked = false;
           return;
         }
-        await turnMusicOn();
-      });
-
-      // Many browsers require a user gesture before audio can start. A tap
-      // anywhere outside the switch retries playback without changing the switch.
-      document.addEventListener('pointerdown', (event) => {
-        if (event.target.closest('.music-control')) return;
-        if (musicToggle.checked && musicAvailable && music.paused) {
-          turnMusicOn();
+        if (musicToggle.checked) {
+          await turnMusicOn();
+        } else {
+          music.pause();
         }
       });
 
-      // Try autoplay on page load. Failure is handled above and is harmless.
       turnMusicOn();
     })();
   </script>
